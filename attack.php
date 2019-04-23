@@ -6,7 +6,7 @@ class HttpServer extends app{
     private $requset;
     private $response;
 
-    private $max_page = 1000000;
+    private $max_page = 100000;
 
     public function __construct(){
         parent::__construct();
