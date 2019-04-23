@@ -154,6 +154,8 @@ class db{
      * @return bool|DB_Result|mysqli_result
      */
     public function insert($table,$data){
+        $table = $this->pre_table($table);
+
         $keys = $vals = [];
         foreach($data as $key=>$val){
             $keys[] = '`' . mysqli_real_escape_string($this->link,$key) . '`';
