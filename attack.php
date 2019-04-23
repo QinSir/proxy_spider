@@ -13,12 +13,12 @@ class HttpServer extends app{
 
         $this->serv = new swoole_http_server('_', 9502);
         $this->serv->set(array(
-            //'worker_num' => 2, //一般设置为服务器CPU数的1-4倍
+            'worker_num' => 8, //一般设置为服务器CPU数的1-4倍
             // 'daemonize' => 1, //以守护进程执行
-            //'max_conn'  => 128,
+            'max_conn'  => 1280,
             'max_request' => 10000,
             'dispatch_mode' => 2,
-            'task_worker_num' => 8, //task进程的数量
+            'task_worker_num' => 30, //task进程的数量
             'task_ipc_mode ' => 3, //使用消息队列通信，并设置为争抢模式
         ));
         
@@ -66,15 +66,21 @@ class HttpServer extends app{
                 'ip'=>$ips[$k]['proxy_ip'],//代理IP
                 'port'=>$ips[$k]['proxy_port'],//代理端口
                 'url'=>$args['url'],
-            ],-1,function() use ($that , $args){
+            ],mt_rand(0,29),function() use ($that , $args){
                 $that->lib('db')->update('kv','value=value-1',['key'=>'num']);
             });
             $this->lib('db')->update('kv','value=value+1',['key'=>'num']);
             $cur = $this->lib('db')->get("select value from ###_kv where `key`='num'");
             @$cur = intval($cur['value']);
             //循环条件
-            $continue = is_numeric($this->max_page) && $this->max_page > 0 ? $cur <= $this->max_page : true;
-        }while($continue);
+            if(is_numeric($this->max_page) && $this->max_page > 0){
+                while($cur >= $this->max_page){
+                    $cur = $this->lib('db')->get("select value from ###_kv where `key`='num'");
+                    @$cur = intval($cur['value']);
+                    usleep(10000);
+                }
+            }
+        }while(true);
         //记录当前任务
         $this->lib('credis')->delete('attack_task');
         echo "done\n";
