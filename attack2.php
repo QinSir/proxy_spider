@@ -63,9 +63,7 @@ class HttpServer extends app{
                 'ip'=>$row['proxy_ip'],//代理IP
                 'port'=>$row['proxy_port'],//代理端口
                 'url'=>$args['url'],
-            ],mt_rand(0,29),function($serv , $work_id ,$res){
-                var_dump($res);
-            });
+            ],mt_rand(0,29));
         }
         return true;
         
@@ -75,7 +73,7 @@ class HttpServer extends app{
      * 任务处理
      */
     public function onTask($serv, $task_id, $from_id, $data){
-        $res = $this->http($data['url'] , [
+        $this->http($data['url'] , [
             'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36',
         ] , [
             'ip'=>$data['ip'],
