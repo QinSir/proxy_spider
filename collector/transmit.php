@@ -1,12 +1,17 @@
 <?php
 require_once('libs/app.php');
+require_once('libs/phpQuery.php');
 
+/**
+ * 采集器
+ * url https://www.xxx.com/{x} {x}会被替换为 1,2,3~
+ * order 1,2,4,5,3 ip,port,anony,type,position
+ */
 class HttpServer extends app{
     private $serv;
     private $requset;
     private $response;
 
-    private $cur = 1;
     private $max_page = 10000;
 
     public function __construct(){
@@ -42,20 +47,18 @@ class HttpServer extends app{
             $this->end('invalid url');
             return false;
         }
-        //检查是否任务重复
-        $cur_task = $this->lib('credis')->get('cur_task');
-        if($cur_task == $args['url']){
-            $this->end('do not repeat');
-            return false;
+        //解析代理信息顺序
+        $proxy_order = [0 , 1 , 2 , 3 , 4];
+        if(isset($args['order']) && is_string($args['order']) && preg_match('/^\d+(\,\d+){3,}/', $args['order'])){
+            $proxy_order = explode(',', $args['order']);
         }
-        //记录当前任务
-        $this->lib('credis')->set('cur_task' , $args['url']);
         //开始处理
         $this->end('getting data!');
         //开始处理
-        $err = 0;
+        $err = 0;$cur = 1;
         do{
-            $res = $this->get_proxys($args['url']);
+            $url = preg_replace('/{x}/', $cur++, $args['url']);
+            $res = $this->get_proxys($url , $proxy_order);
             //计算错误次数
             if($res === false){
                 $err ++;
@@ -64,15 +67,12 @@ class HttpServer extends app{
             if($err >= 5){
                 break;
             }
-            //追加计数
-            $this->cur ++;
             //循环条件
-            $continue = is_numeric($this->max_page) && $this->max_page > 0 ? $this->cur <= $this->max_page : true;
+            $continue = is_numeric($this->max_page) && $this->max_page > 0 ? $cur <= $this->max_page : true;
             //每隔1秒请求1次
             sleep(1);
         }while($continue);
-        //记录当前任务
-        $this->lib('credis')->delete('cur_task');
+        //取消当前任务
         echo "done\n";
         return true;
         
@@ -82,12 +82,30 @@ class HttpServer extends app{
      * 任务处理
      */
     public function onTask($serv, $task_id, $from_id, $data){
-        $res = $this->http('http://www.uxiangc.com/' , [
+        //数据整理
+        if(!is_array($data) || empty($data)){
+            return false;
+        }
+        foreach ($data as $k => $v) {
+            if(!is_string($v)){
+                continue;
+            }
+            $data[$k] = preg_replace('/\s*/', '', $v);
+        }
+        unset($k , $v);
+        //检查代理类型
+        if(!preg_match('/^http[s]?$/i', $data['type'])){
+            echo 'not support type:'.$data['type']."\n";
+            return false;
+        }
+        //开始尝试请求百度
+        $res = $this->http('http://www.baidu.com/' , [
             'User-Agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36',
         ] , [
             'ip'=>$data['ip'],
             'port'=>$data['port'],
-        ] , 10);
+            'type'=>$data['type'],
+        ] , 30);
         //记录日志
         $this->lib('log')->write($data['ip'].':'.$data['port']);
         //记录到数据库
@@ -107,18 +125,8 @@ class HttpServer extends app{
         
     }
 
-    /**
-     * 异步通知
-     * @param  string $key          标识
-     * @param  string $payment_code 支付方式编码
-     * @param  string $type         数据类型
-     */
-    private function notify($key = '',$payment_code = '',$type = 'put'){
-        
-    }
-
-    private function get_proxys($url = ''){
-        $url = preg_replace('/{x}/', $this->cur, $url);
+    public function get_proxys($url = '' , $proxy_order = []){
+        echo $url."\n";
         //开始获取
         $random_ip = mt_rand(1,254).'.'.mt_rand(1,254).'.'.mt_rand(1,254).'.'.mt_rand(1,254);
         $res = $this->http( $url, [
@@ -130,34 +138,30 @@ class HttpServer extends app{
             echo 'error.' . $url."\n";
             return false;
         }
-        //整理正则
-        $reg = '/<tr>(\s*<td[^<]*>(.*)<\/td>\s*){7}<\/tr>/';
-        $res = preg_match_all($reg, $res, $rows);
-        if(!$res){
-            unset($res);
-            return true;
+        //整理数据
+        phpQuery::newDocument($res);
+        $res = pq('tr');
+        if($res->length() <= 0){
+            return false;
         }
-        unset($url , $res);
+        unset($url);
         //获取行信息
-        foreach ($rows[0] as $row) {
-            $r = preg_match_all('/<td[^<]*>(.*)<\/td>/', $row , $out);
-            if(!$r){
-                unset($r , $row , $out);
+        foreach ($res as $row) {
+            $out = pq($row)->find('td');
+            if($out->length() <= 4){
+                unset($row , $out);
                 continue;
             }
             //执行任务
             $this->serv->task([
-                'ip'=>$out[1][0],//代理IP
-                'port'=>$out[1][1],//代理端口
-                'is_anony'=>strpos($out[1][2] , '匿') === false ? 0 : 1,
-                'type'=>$out[1][3],
-                'position'=>$out[1][4],
-            ],-1 ,function ($serv,$task_id,$res) use ($out){
-                //记录日志
-                $this->lib('log')->write($out[1][0].':'.$out[1][1]);
-            });
+                'ip'=>$out->eq($proxy_order[0])->text(),//代理IP
+                'port'=>$out->eq($proxy_order[1])->text(),//代理端口
+                'is_anony'=>strpos($out->eq($proxy_order[2])->text() , '匿') === false ? 0 : 1,
+                'type'=>$out->eq($proxy_order[3])->text(),
+                'position'=>@($out->eq($proxy_order[4])->text() ?: ''),
+            ],-1);
         }
-        unset($res , $r , $row , $out);
+        unset($res , $row , $out);
         return true;
     }
 
@@ -184,7 +188,11 @@ class HttpServer extends app{
         curl_setopt($ch, CURLOPT_URL, $url);
         //代理
         if(is_array($proxy) && isset($proxy['ip']) && isset($proxy['port']) && is_string($proxy['ip']) && preg_match('/^\d{1,3}(\.\d{1,3}){3}$/', $proxy['ip']) && is_numeric($proxy['port']) && $proxy['port'] > 0){
-            curl_setopt($ch, CURLOPT_PROXY, $proxy['ip']);
+            if(isset($proxy['type']) && $proxy['type'] == 'https'){
+                curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_HTTPS);
+            }else{
+                curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+            }
             curl_setopt($ch, CURLOPT_PROXYPORT, $proxy['port']);
             if(isset($proxy['pwd']) && is_string($proxy['pwd'])){
                 curl_setopt($ch, CURLOPT_PROXYUSERPWD, $proxy['pwd']);    
@@ -194,10 +202,10 @@ class HttpServer extends app{
             curl_setopt($ch, CURLOPT_HTTPHEADER, $HttpHeader);
         }
         $ret = curl_exec($ch);
-        $httpCode = curl_getinfo($ch,CURLINFO_HTTP_CODE);
+        /*$httpCode = curl_getinfo($ch,CURLINFO_HTTP_CODE);
         if($httpCode != '200'){
             return false;
-        }
+        }*/
         curl_close($ch);
         return $ret;
     }
