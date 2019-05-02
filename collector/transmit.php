@@ -188,6 +188,7 @@ class HttpServer extends app{
         //代理
         if(is_array($proxy) && isset($proxy['ip']) && isset($proxy['port']) && is_string($proxy['ip']) && preg_match('/^\d{1,3}(\.\d{1,3}){3}$/', $proxy['ip']) && is_numeric($proxy['port']) && $proxy['port'] > 0){
             curl_setopt($ch, CURLOPT_PROXYAUTH, CURLAUTH_BASIC);
+            curl_setopt($ch, CURLOPT_PROXY, $proxy['ip']);
             curl_setopt($ch, CURLOPT_PROXYPORT, $proxy['port']);
             if(isset($proxy['pwd']) && is_string($proxy['pwd'])){
                 curl_setopt($ch, CURLOPT_PROXYUSERPWD, $proxy['pwd']);    
