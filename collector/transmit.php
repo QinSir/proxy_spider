@@ -104,7 +104,6 @@ class HttpServer extends app{
         ] , [
             'ip'=>$data['ip'],
             'port'=>$data['port'],
-            'type'=>$data['type'],
         ] , 30);
         //记录日志
         $this->lib('log')->write($data['ip'].':'.$data['port']);
@@ -188,11 +187,7 @@ class HttpServer extends app{
         curl_setopt($ch, CURLOPT_URL, $url);
         //代理
         if(is_array($proxy) && isset($proxy['ip']) && isset($proxy['port']) && is_string($proxy['ip']) && preg_match('/^\d{1,3}(\.\d{1,3}){3}$/', $proxy['ip']) && is_numeric($proxy['port']) && $proxy['port'] > 0){
-            if(isset($proxy['type']) && $proxy['type'] == 'https'){
-                curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_HTTPS);
-            }else{
-                curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
-            }
+            curl_setopt($ch, CURLOPT_PROXYAUTH, CURLAUTH_BASIC);
             curl_setopt($ch, CURLOPT_PROXYPORT, $proxy['port']);
             if(isset($proxy['pwd']) && is_string($proxy['pwd'])){
                 curl_setopt($ch, CURLOPT_PROXYUSERPWD, $proxy['pwd']);    
