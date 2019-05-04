@@ -20,20 +20,25 @@ var db = {
 			}
 		});
 	},
-	query:function(sql){
+	query:function(sql , params , cbk){
+		if(typeof params === 'function'){
+			cbk = params;
+			params = null;
+		}
 		//初始化
 		this.init();
 		//ping测试
 		this.ping();
 		//开始查询
-		this.conn.query(sql, function (e, r, f) {
+		this.conn.query(sql, params , function (e, r) {
+			console.log(sql,params);
 			//异常
 			if(e){
 				console.log(e.sqlMessage + ' sql:' + sql);
 				return false;
 			}
 			//输出结果
-			return r;
+			cbk && typeof cbk === 'function' && cbk.call({} , r);
 		});
 	},
 }

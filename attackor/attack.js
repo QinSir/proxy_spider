@@ -4,7 +4,9 @@ var url = require('url');
 var redis = require('redis');
 
 var db = require('./libs/db');
-var r = db.query('select  from qx_ips where is_enable=1');
+db.query('select * from qx_ips where is_enable=1',function(r){
+	console.log(r);
+});
 return false;
 
 
