@@ -3,6 +3,11 @@ var http = require('http');
 var url = require('url');
 var redis = require('redis');
 
+var db = require('./libs/db');
+var r = db.query('select  from qx_ips where is_enable=1');
+return false;
+
+
 /**
  * 输出数据
  * @param  {string} data 数据
